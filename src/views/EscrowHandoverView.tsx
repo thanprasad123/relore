@@ -3,6 +3,7 @@ import { AppStore } from '../core/store';
 import { User } from '../types';
 import { ArrowRightLeft, ShieldCheck, CheckCircle2, Lock, Sparkles, ExternalLink } from 'lucide-react';
 import { ZayqEyebrow } from '../components/Zayq';
+import { getWalletState } from '../core/mst/wallet';
 
 interface Props {
     listingId: string;
@@ -23,10 +24,34 @@ export const EscrowHandoverView: React.FC<Props> = ({
     const [sellerInputCode, setSellerInputCode] = useState('');
     const [buyerInputCode, setBuyerInputCode] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isInitiating, setIsInitiating] = useState(false);
+    const [initiationTx, setInitiationTx] = useState('');
     const [handoverError, setHandoverError] = useState('');
     const [transferSuccess, setTransferSuccess] = useState<{ passportId: string; txHash: string } | null>(null);
 
     if (!passport) return null;
+
+    const handleSellerInitiate = async () => {
+        setHandoverError('');
+        const wallet = getWalletState();
+        if (!wallet.connected || !wallet.address) {
+            setHandoverError('Connect the seller’s MST Testnet wallet before initiating the on-chain transfer.');
+            return;
+        }
+        if (!listing.buyerWalletAddress) {
+            setHandoverError('The buyer must connect their MST wallet and restart the purchase so the transfer can target that wallet.');
+            return;
+        }
+        setIsInitiating(true);
+        try {
+            const txHash = await AppStore.initiateOnChainOwnershipTransfer(listing.id, currentUser);
+            setInitiationTx(txHash);
+        } catch (error) {
+            setHandoverError(error instanceof Error ? error.message : 'The seller could not initiate the MST transfer.');
+        } finally {
+            setIsInitiating(false);
+        }
+    };
 
     const handleConfirmHandover = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -119,8 +144,19 @@ export const EscrowHandoverView: React.FC<Props> = ({
                             <Lock size={14} />
                             <span>Dual Handover Verification Rules</span>
                         </div>
-                        <p>Confirm both handover codes after meeting. In this demo the update is saved locally; it does not transfer money or submit a blockchain transaction unless a configured wallet and contract are available.</p>
+                        <p>The seller first signs an MST transaction naming the buyer’s wallet. After the physical handover, the buyer signs a second transaction to complete ownership transfer. No payment is handled by this contract.</p>
                     </div>
+
+                    {currentUser.id === listing.sellerId && !listing.chainTransferInitiated && (
+                        <button type="button" onClick={handleSellerInitiate} disabled={isInitiating} className="w-full rounded-xl border border-cyan-500/40 bg-cyan-500/10 py-3 text-sm font-semibold text-cyan-200 disabled:opacity-50">
+                            {isInitiating ? 'Waiting for seller wallet…' : 'Seller: initiate MST ownership transfer'}
+                        </button>
+                    )}
+                    {listing.chainTransferInitiated && (
+                        <p role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                            Seller transfer initiated on MST. {initiationTx && <span className="font-mono">Transaction: {initiationTx.slice(0, 16)}…</span>} The buyer can now confirm after entering both handover codes.
+                        </p>
+                    )}
 
                     <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm text-slate-300">
                         <p className="font-semibold text-white">Share your handover code at the in-person exchange</p>
@@ -131,7 +167,8 @@ export const EscrowHandoverView: React.FC<Props> = ({
                         ) : <p className="mt-2">Switch to the buyer or seller account to view its handover code.</p>}
                     </div>
 
-                    {currentUser.id !== listing.buyerId && <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">The buyer completes the handover. Switch to the buyer identity to continue.</p>}
+                    {currentUser.id === listing.buyerId && !listing.chainTransferInitiated && <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Waiting for the seller to initiate the transfer from their MST wallet.</p>}
+                    {currentUser.id !== listing.buyerId && currentUser.id !== listing.sellerId && <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Switch to the seller to initiate the transfer, then to the buyer to confirm.</p>}
                     {handoverError && <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{handoverError}</p>}
                     {/* Dual Code Inputs */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -144,7 +181,7 @@ export const EscrowHandoverView: React.FC<Props> = ({
                                 onChange={(e) => setSellerInputCode(e.target.value)}
                                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-center text-lg font-mono font-bold text-cyan-300 outline-none"
                             />
-                            <span className="text-[10px] text-slate-500 block text-center">Provided by Seller (Arjun Mehta)</span>
+                            <span className="text-[10px] text-slate-500 block text-center">Provided by Seller ({listing.sellerName})</span>
                         </div>
 
                         <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
@@ -156,17 +193,17 @@ export const EscrowHandoverView: React.FC<Props> = ({
                                 onChange={(e) => setBuyerInputCode(e.target.value)}
                                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-center text-lg font-mono font-bold text-emerald-300 outline-none"
                             />
-                            <span className="text-[10px] text-slate-500 block text-center">Provided by Buyer ({currentUser.name})</span>
+                            <span className="text-[10px] text-slate-500 block text-center">Provided by the buyer</span>
                         </div>
                     </div>
 
                     <button
                         type="submit"
-                        disabled={isSubmitting || currentUser.id !== listing.buyerId}
+                        disabled={isSubmitting || currentUser.id !== listing.buyerId || !listing.chainTransferInitiated}
                         className="w-full bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-bold py-3 rounded-xl text-xs transition-all shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                         {isSubmitting ? (
-                            <span>Saving passport ownership handover...</span>
+                            <span>Waiting for MST confirmation…</span>
                         ) : (
                             <>
                                 <ArrowRightLeft size={16} />

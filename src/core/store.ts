@@ -11,6 +11,7 @@ import {
     ProductCategory
 } from '../types';
 import { MSTAnchorService } from './mst/anchorService';
+import { getWalletState } from './mst/wallet';
 import { WASMifyBridge } from './mst/wasmify';
 import { VerificationEngine } from './verifiers/verificationEngine';
 import { id as keccak256 } from 'ethers';
@@ -539,6 +540,10 @@ export class AppStore {
         currentUser: User;
     }): Promise<{ passport: ProductPassport; anchorTx: string }> {
         const rawId = data.serialNumber || data.imei || data.serviceTag || '';
+        const wallet = getWalletState();
+        if (wallet.connected && (!data.currentUser.walletAddress || wallet.address?.toLowerCase() !== data.currentUser.walletAddress.toLowerCase())) {
+            throw new Error('Connect the wallet linked to the current marketplace account before registering this passport.');
+        }
 
         // Calculate hashed identifier
         const hashedIdentifier = keccak256(rawId);
@@ -577,13 +582,22 @@ export class AppStore {
             'ProductPassportRegistry',
             hashedIdentifier
         );
+        const ownershipAnchor = await MSTAnchorService.registerInitialOwner(passportId);
+        const attestationAnchor = await MSTAnchorService.anchorEvent(
+            passportId,
+            'IDENTITY_VERIFIED',
+            'AttestationRegistry',
+            hashedIdentifier
+        );
 
         const initialLifecycle: LifecycleEvent = {
             id: `LFC-${Math.floor(1000 + Math.random() * 9000)}`,
             passportId,
             eventType: 'PURCHASED',
-            title: 'Passport Registered & Identity Anchored',
-            description: `Product identity registered by ${data.currentUser.name} on MST network.`,
+            title: anchor.status === 'CONFIRMED' ? 'Passport Registered & Identity Anchored on MST' : 'Passport Saved Locally',
+            description: anchor.status === 'CONFIRMED'
+                ? `Product identity registered by ${data.currentUser.name} on MST Testnet.`
+                : `Product identity created by ${data.currentUser.name}; no MST transaction was submitted.`,
             actorName: data.currentUser.name,
             actorDid: data.currentUser.mstIdentityDid,
             timestamp: now,
@@ -620,7 +634,7 @@ export class AppStore {
                     ownerName: data.currentUser.name,
                     ownerDid: data.currentUser.mstIdentityDid,
                     acquiredAt: now,
-                    transferTxHash: anchor.transactionHash,
+                    transferTxHash: ownershipAnchor.transactionHash,
                     verificationLevelAtTransfer: data.invoiceHash ? 'OWNERSHIP_VERIFIED' : 'IDENTITY_VERIFIED'
                 }
             ],
@@ -636,7 +650,7 @@ export class AppStore {
                     evidenceHash: hashedIdentifier,
                     evidenceSummary: `Category identifier verified: ${rawId}`,
                     timestamp: now,
-                    mstTxHash: anchor.transactionHash,
+                    mstTxHash: attestationAnchor.transactionHash,
                     status: 'VALID'
                 }
             ],
@@ -751,12 +765,18 @@ export class AppStore {
         if (!passport) throw new Error('Passport not found');
         if (listing.status !== 'ACTIVE') throw new Error('This listing is no longer available.');
         if (listing.sellerId === buyer.id) throw new Error('You cannot buy your own listing.');
+        const wallet = getWalletState();
+        if (!buyer.walletAddress || !wallet.connected || wallet.chainId !== 91562037 || wallet.address?.toLowerCase() !== buyer.walletAddress.toLowerCase()) {
+            throw new Error('Connect the buyer’s MST Testnet wallet and use the matching marketplace account before starting an ownership transfer.');
+        }
 
         const handoverSeller = Math.floor(100000 + Math.random() * 900000).toString();
         const handoverBuyer = Math.floor(100000 + Math.random() * 900000).toString();
 
         listing.status = 'PENDING_TRANSFER';
         listing.buyerId = buyer.id;
+        listing.buyerWalletAddress = buyer.walletAddress;
+        listing.chainTransferInitiated = false;
         listing.escrowStatus = 'PURCHASE_STARTED';
         listing.handoverCodeSeller = handoverSeller;
         listing.handoverCodeBuyer = handoverBuyer;
@@ -766,6 +786,25 @@ export class AppStore {
         this.save();
 
         return listing;
+    }
+
+    /** The current owner must sign the seller side of the on-chain transfer. */
+    public static async initiateOnChainOwnershipTransfer(listingId: string, seller: User): Promise<string> {
+        const listing = this.getListingById(listingId);
+        if (!listing || listing.status !== 'PENDING_TRANSFER') throw new Error('There is no pending purchase to transfer.');
+        if (listing.sellerId !== seller.id) throw new Error('Only the seller can initiate the ownership transfer.');
+        if (!listing.buyerWalletAddress) throw new Error('The buyer must connect their MST wallet before the seller can initiate the transfer.');
+        if (listing.chainTransferInitiated) throw new Error('The seller has already initiated this on-chain transfer.');
+        const wallet = getWalletState();
+        if (!seller.walletAddress || wallet.address?.toLowerCase() !== seller.walletAddress.toLowerCase()) {
+            throw new Error('Connect the wallet linked to the seller account that currently owns this passport.');
+        }
+
+        const anchor = await MSTAnchorService.initiateOwnershipTransfer(listing.passportId, listing.buyerWalletAddress);
+        if (anchor.status !== 'CONFIRMED') throw new Error('Connect the seller wallet and configure OwnershipRegistry before initiating an on-chain transfer.');
+        listing.chainTransferInitiated = true;
+        this.save();
+        return anchor.transactionHash;
     }
 
     public static async cancelListing(listingId: string, seller: User): Promise<void> {
@@ -808,17 +847,22 @@ export class AppStore {
             throw new Error('There is no pending purchase to complete.');
         }
         if (listing.buyerId !== buyer.id) throw new Error('Only the buyer on this purchase can receive the passport.');
+        const wallet = getWalletState();
+        if (!buyer.walletAddress || wallet.address?.toLowerCase() !== buyer.walletAddress.toLowerCase()) {
+            throw new Error('Connect the buyer wallet selected for this purchase before confirming the transfer.');
+        }
 
         const previousOwnerName = passport.currentOwnerName;
         const now = new Date().toISOString();
 
         // Call MST OwnershipRegistry.completeTransfer
-        const anchor = await MSTAnchorService.anchorEvent(
-            passport.passportId,
-            `EVT-TRANSFER-${passport.passportId}`,
-            'OwnershipRegistry',
-            `0xTRANSFER_${listing.sellerId}_TO_${buyer.id}`
-        );
+        if (!listing.chainTransferInitiated) {
+            throw new Error('The seller must initiate this transfer with their MST wallet before the buyer can confirm it.');
+        }
+        const anchor = await MSTAnchorService.completeOwnershipTransfer(passport.passportId);
+        if (anchor.status !== 'CONFIRMED') {
+            throw new Error('Connect the buyer wallet and confirm the on-chain ownership transfer. Local demo data was not changed.');
+        }
 
         // Update Passport Owner
         passport.currentOwnerId = buyer.id;
@@ -849,7 +893,7 @@ export class AppStore {
             passportId: passport.passportId,
             eventType: 'TRANSFERRED',
             title: 'Verifiable Ownership Transferred on MST',
-            description: `Ownership transferred from ${previousOwnerName} to ${buyer.name}. Escrow released. Passport ID ${passport.passportId} preserved.`,
+            description: `Ownership transferred from ${previousOwnerName} to ${buyer.name} on MST Testnet. This marketplace does not collect payment. Passport ID ${passport.passportId} preserved.`,
             actorName: buyer.name,
             actorDid: buyer.mstIdentityDid,
             timestamp: now,

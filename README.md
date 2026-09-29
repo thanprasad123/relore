@@ -50,7 +50,7 @@ The contract addresses in the browser are intentionally blank until a deployment
 - Migrate React screens from browser storage to the API; the API currently exists alongside the local demo store.
 - Configure a real payment provider adapter, signed webhooks, settlements, refunds, cancellations, chargebacks, and disputes. Checkout is intentionally disabled until an adapter is implemented.
 - Add an on-chain event indexer and reconciliation worker after deploying and configuring the registry contracts.
-- Complete and review the two-party on-chain ownership transfer workflow. The current UI's one-step transfer is local demo behavior and is blocked from claiming an on-chain ownership transfer.
+- Keep the two-party on-chain ownership transfer flow configured against reviewed deployments. Passport creation now submits passport registration, initial ownership, and identity attestation transactions; sellers initiate transfers and buyers confirm them. Listing records and marketplace discovery still use browser-local data and are not synchronized across devices.
 - Replace local SQLite/files with managed PostgreSQL and private object storage; configure backups, monitoring, rate limits, abuse reporting, and data-retention procedures.
 - Review and secure the contracts before mainnet use. Some on-chain registry write methods still lack issuer/admin access controls.
 - Validate deployed contract addresses and source code on the explorer; define admin-key rotation, incident response, and recovery procedures.

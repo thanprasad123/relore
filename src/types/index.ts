@@ -209,6 +209,8 @@ export interface MarketplaceListing {
     passportId: string;
     sellerId: string;
     buyerId?: string;
+    buyerWalletAddress?: string;
+    chainTransferInitiated?: boolean;
     sellerName: string;
     sellerReputation: number;
     sellerDid: string;

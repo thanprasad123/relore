@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { getSigner, getProvider, MST_TESTNET_CONFIG } from './wallet';
+import { getProvider, MST_TESTNET_CONFIG } from './wallet';
 
 /** Contract addresses are intentionally empty until the app's contracts are deployed. */
 export const MST_CONTRACT_ADDRESSES = {
@@ -49,7 +49,7 @@ export const CONTRACT_ABIS: Record<string, string[]> = {
     ],
 };
 
-export function getContract(contractName: keyof typeof MST_CONTRACT_ADDRESSES): ethers.Contract {
+export function getContract(contractName: keyof typeof MST_CONTRACT_ADDRESSES, signer?: ethers.Signer): ethers.Contract {
     // Listing and warranty events are recorded in the general lifecycle registry;
     // this codebase does not include separate marketplace or warranty contracts.
     const registryName = contractName === 'MarketplaceRegistry' || contractName === 'WarrantyRegistry'
@@ -65,10 +65,10 @@ export function getContract(contractName: keyof typeof MST_CONTRACT_ADDRESSES): 
 
     try {
         const provider = getProvider();
-        return new ethers.Contract(address, abi, provider);
+        return new ethers.Contract(address, abi, signer || provider);
     } catch {
         const provider = new ethers.JsonRpcProvider(MST_TESTNET_CONFIG.rpcUrl, MST_TESTNET_CONFIG.chainId);
-        return new ethers.Contract(address, abi, provider);
+        return new ethers.Contract(address, abi, signer || provider);
     }
 }
 

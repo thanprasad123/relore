@@ -96,12 +96,12 @@ export const ListingDetailView: React.FC<Props> = ({ listingId, currentUser, onN
                                 <span className="text-3xl font-extrabold text-white font-mono">₹{listing.price.toLocaleString()}</span>
                             </div>
                             <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full font-mono">
-                                Guided handover demo
+                                MST ownership handover
                             </span>
                         </div>
 
                         {purchaseError && <p role="alert" className="text-sm text-rose-300">{purchaseError}</p>}
-                        <p className="text-xs text-slate-400">Demo mode: no payment is collected or held. The handover updates the passport record in this browser.</p>
+                        <p className="text-xs text-slate-400">The handover uses two MST wallet transactions. This marketplace does not collect or hold payment, and listing data remains browser-local.</p>
                         {listing.status === 'PENDING_REVIEW' ? (
                             <p className="rounded-xl border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">This listing is waiting for marketplace admin review before it can be seen by buyers.</p>
                         ) : listing.status === 'REJECTED' ? (
@@ -123,7 +123,7 @@ export const ListingDetailView: React.FC<Props> = ({ listingId, currentUser, onN
                             <p className="rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">This listing is no longer available.</p>
                         ) : isSeller ? (
                             <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl font-mono">
-                                You are the seller of this listing. Manage handover when a buyer deposits funds.
+                                You are the seller of this listing. Start the MST ownership transfer after a buyer begins the handover. Payments are not handled here.
                             </p>
                         ) : (
                             <button
