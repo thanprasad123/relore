@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { getProvider, MST_TESTNET_CONFIG } from './wallet';
+import { getSigner, getProvider, MST_TESTNET_CONFIG } from './wallet';
 
 /** Contract addresses are intentionally empty until the app's contracts are deployed. */
 export const MST_CONTRACT_ADDRESSES = {
