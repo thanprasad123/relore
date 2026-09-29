@@ -227,7 +227,8 @@ export const CreatePassportView: React.FC<Props> = ({ currentUser, onNavigate })
                         <label htmlFor="product-photo" className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600 hover:border-teal-600">
                             <Image size={20} className="text-slate-500" />
                             <span><span className="font-semibold text-teal-800">Choose a photo</span> or browse your device</span>
-                            <span className="text-xs text-slate-500">JPG, PNG, or WebP · up to 10 MB</span>
+                            <span className="text-xs text-slate-500">Use a clear, well-lit photo showing the whole device.</span>
+                            <span className="text-xs text-slate-500">JPG, PNG, or WebP · up to 10 MB · resized automatically</span>
                         </label>
                     )}
                     <p className="mt-1.5 text-xs text-slate-500">Optional. The photo is resized and saved with this product passport.</p>
