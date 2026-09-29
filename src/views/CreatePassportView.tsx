@@ -95,7 +95,7 @@ export const CreatePassportView: React.FC<Props> = ({ currentUser, onNavigate })
                     <label className={labelClass} htmlFor="product-category">Product type</label>
                     <div className="relative">
                         {category === 'LAPTOP' ? <Laptop size={17} className="pointer-events-none absolute left-3.5 top-3.5 text-slate-500" /> : <Smartphone size={17} className="pointer-events-none absolute left-3.5 top-3.5 text-slate-500" />}
-                        <select id="product-category" value={category} onChange={event => setCategory(event.target.value as ProductCategory)} className={`${inputClass} pl-10`}>
+                        <select id="product-category" value={category} onChange={event => setCategory(event.target.value as ProductCategory)} className={`${inputClass} has-leading-icon`}>
                             <option value="LAPTOP">Laptop or computer</option>
                             <option value="SMARTPHONE">Smartphone</option>
                         </select>
@@ -148,7 +148,7 @@ export const CreatePassportView: React.FC<Props> = ({ currentUser, onNavigate })
                     <label className={labelClass} htmlFor="product-photo">Product photo URL <span className="font-normal text-slate-500">(optional)</span></label>
                     <div className="relative">
                         <Image size={17} className="pointer-events-none absolute left-3.5 top-3.5 text-slate-500" />
-                        <input id="product-photo" type="url" value={imageUrl} onChange={event => setImageUrl(event.target.value)} placeholder="https://example.com/product-photo.jpg" className={`${inputClass} pl-10`} />
+                        <input id="product-photo" type="url" value={imageUrl} onChange={event => setImageUrl(event.target.value)} placeholder="https://example.com/product-photo.jpg" className={`${inputClass} has-leading-icon`} />
                     </div>
                     <p className="mt-1.5 text-xs text-slate-500">Optional. Leave blank to use a standard image for this product type.</p>
                 </div>
