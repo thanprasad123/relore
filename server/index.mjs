@@ -276,6 +276,22 @@ const routes = async (req, res) => {
     const model = validateText(body.model, 'Model', 140);
     const releaseYear = Number(body.releaseYear);
     if (!Number.isInteger(releaseYear) || releaseYear < 1970 || releaseYear > new Date().getFullYear() + 1) return send(res, 400, { error: 'invalid_release_year' });
+    let imageUrl = '';
+    if (typeof body.imageUrl === 'string' && body.imageUrl.startsWith('https://')) {
+      imageUrl = body.imageUrl.slice(0, 800);
+    } else if (typeof body.imageUrl === 'string' && body.imageUrl.startsWith('data:')) {
+      const uploadedImage = body.imageUrl.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+      if (!uploadedImage || uploadedImage[2].length > 220_000) return send(res, 400, { error: 'invalid_product_image', message: 'Choose a JPG, PNG, or WebP photo smaller than 160 KB after processing.' });
+      const bytes = Buffer.from(uploadedImage[2], 'base64');
+      if (bytes.length > 160 * 1024) return send(res, 413, { error: 'product_image_size_limit' });
+      const validImage = uploadedImage[1] === 'jpeg'
+        ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+        : uploadedImage[1] === 'png'
+          ? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+          : bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+      if (!validImage) return send(res, 415, { error: 'invalid_product_image_type' });
+      imageUrl = body.imageUrl;
+    }
     const existing = db.prepare('SELECT passport_id FROM passports WHERE identifier_hash=?').get(identifierHash);
     if (existing) return send(res, 409, { error: 'product_already_registered', passportId: existing.passport_id });
     const passportId = body.passportId ? String(body.passportId).trim().toUpperCase() : `PP-${randomBytes(4).readUInt32BE() % 900000 + 100000}`;
@@ -283,7 +299,7 @@ const routes = async (req, res) => {
     const createdAt = now();
     const payload = {
       passportId, category, brand, model, releaseYear,
-      imageUrl: typeof body.imageUrl === 'string' && body.imageUrl.startsWith('https://') ? body.imageUrl.slice(0, 800) : '',
+      imageUrl,
       additionalImages: [],
       identifier: { category, model, brand, hashedIdentifier: identifierHash },
       verificationLevel: 'SELLER_REPORTED', currentStatus: 'ACTIVE',

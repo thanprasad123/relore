@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Image, Laptop, ShieldCheck, Smartphone } from 'lucide-react';
+import { ArrowLeft, Image, Laptop, ShieldCheck, Smartphone, Upload, X } from 'lucide-react';
 import { User, ProductCategory } from '../types';
 import { AppStore } from '../core/store';
 import { getWalletState } from '../core/mst/wallet';
@@ -11,6 +11,54 @@ interface Props {
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_STORED_IMAGE_BYTES = 160 * 1024;
+
+function readBlobAsDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('The photo could not be read.'));
+        reader.onerror = () => reject(new Error('The photo could not be read.'));
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function prepareProductImage(file: File): Promise<string> {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        throw new Error('Choose a JPG, PNG, or WebP photo.');
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+        throw new Error('Choose a photo smaller than 10 MB.');
+    }
+
+    const bitmap = await createImageBitmap(file);
+    try {
+        let scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
+        let quality = 0.82;
+        let blob: Blob | null = null;
+
+        for (let attempt = 0; attempt < 12; attempt++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+            canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('Your browser could not process this photo.');
+            context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+            blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+            if (!blob) throw new Error('Your browser could not process this photo.');
+            if (blob.size <= MAX_STORED_IMAGE_BYTES) break;
+            if (quality > 0.5) quality -= 0.08;
+            else scale *= 0.82;
+        }
+
+        if (!blob || blob.size > MAX_STORED_IMAGE_BYTES) {
+            throw new Error('This photo could not be compressed enough. Choose a smaller image.');
+        }
+        return readBlobAsDataUrl(blob);
+    } finally {
+        bitmap.close();
+    }
+}
 
 export const CreatePassportView: React.FC<Props> = ({ currentUser, onNavigate }) => {
     const [category, setCategory] = useState<ProductCategory>('LAPTOP');
@@ -145,12 +193,44 @@ export const CreatePassportView: React.FC<Props> = ({ currentUser, onNavigate })
                 </div>
 
                 <div>
-                    <label className={labelClass} htmlFor="product-photo">Product photo URL <span className="font-normal text-slate-500">(optional)</span></label>
-                    <div className="relative">
-                        <Image size={17} className="pointer-events-none absolute left-3.5 top-3.5 text-slate-500" />
-                        <input id="product-photo" type="url" value={imageUrl} onChange={event => setImageUrl(event.target.value)} placeholder="https://example.com/product-photo.jpg" className={`${inputClass} has-leading-icon`} />
-                    </div>
-                    <p className="mt-1.5 text-xs text-slate-500">Optional. Leave blank to use a standard image for this product type.</p>
+                    <label className={labelClass} htmlFor="product-photo">Product photo <span className="font-normal text-slate-500">(optional)</span></label>
+                    <input
+                        id="product-photo"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="sr-only"
+                        onChange={async event => {
+                            const file = event.currentTarget.files?.[0];
+                            event.currentTarget.value = '';
+                            if (!file) return;
+                            setFormError('');
+                            try {
+                                setImageUrl(await prepareProductImage(file));
+                            } catch (error) {
+                                setFormError(error instanceof Error ? error.message : 'The photo could not be processed.');
+                            }
+                        }}
+                    />
+                    {imageUrl ? (
+                        <div className="flex items-center gap-4 rounded-xl border border-slate-200 p-3">
+                            <img src={imageUrl} alt="Selected product" className="h-20 w-24 rounded-lg object-cover" />
+                            <div className="flex flex-wrap gap-2">
+                                <label htmlFor="product-photo" className="zayq-btn-ghost inline-flex cursor-pointer items-center gap-2">
+                                    <Upload size={16} /> Change photo
+                                </label>
+                                <button type="button" onClick={() => setImageUrl('')} className="zayq-btn-ghost inline-flex items-center gap-2">
+                                    <X size={16} /> Remove
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <label htmlFor="product-photo" className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600 hover:border-teal-600">
+                            <Image size={20} className="text-slate-500" />
+                            <span><span className="font-semibold text-teal-800">Choose a photo</span> or browse your device</span>
+                            <span className="text-xs text-slate-500">JPG, PNG, or WebP · up to 10 MB</span>
+                        </label>
+                    )}
+                    <p className="mt-1.5 text-xs text-slate-500">Optional. The photo is resized and saved with this product passport.</p>
                 </div>
 
                 {formError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm text-rose-800">{formError}</p>}
